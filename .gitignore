@@ -1,3 +1,4 @@
-/trial
 /target
 **/*.rs.bk
+/trial
+tmp*
