@@ -1,6 +1,6 @@
 fn torknize(l: &String) -> Result<Vec<String>, String> {
     /* strtol がないので無理やりそれっぽいものを作る */
-    // let l: Vec<char> = l.chars().collect();
+    // https://qiita.com/nirasan/items/f7a232af3372ea370f4b
     let mut lex: Vec<String> = Vec::new();
     let mut cur: usize = 0;
     let mut head: usize = 0;
