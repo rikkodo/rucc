@@ -1,32 +1,78 @@
-fn torknize(l: &String) -> Result<Vec<String>, String> {
-    /* strtol がないので無理やりそれっぽいものを作る */
-    // https://qiita.com/nirasan/items/f7a232af3372ea370f4b
-    let mut lex: Vec<String> = Vec::new();
-    let mut cur: usize = 0;
-    let mut head: usize = 0;
+use std::iter::FromIterator;
 
-    while cur < l.len() {
-        let c = l.chars().nth(cur).unwrap();
-        if c.is_ascii_digit() {
-            /* 何もしない */
-        } else if c == '+' || c == '-' {
-            if head != cur {
-                lex.push(l[head..cur].to_string())
+#[derive(Debug, PartialEq, Clone)]
+enum Token {
+    Reserved(char),  // 記号
+    Number(i32),  // 数値 i32としておく
+    Eof, // 入力の終わりを表す
+}
+
+// ref :  https://qiita.com/nirasan/items/f7a232af3372ea370f4b
+struct Lexer {
+    // トークン列
+    token: Vec<Token>,
+    // トークン位置
+    position: usize,
+}
+
+impl Lexer {
+    fn new(input: &Vec<char>) -> Result<Lexer, String> {
+        let tkn = Lexer::tokenize(input)?;
+        Ok(Lexer {token: tkn, position: 0})
+    }
+
+    fn tokenize(input: &Vec<char>) -> Result<Vec<Token>, String> {
+        let mut tkn: Vec<Token> = Vec::new();
+        let mut cur: usize = 0;
+
+        while cur < input.len() {
+            let c = input.get(cur).unwrap();
+
+            // 空白を読み飛ばす
+            if c.is_ascii_whitespace() {
+                cur += 1;
+                continue;
             }
-            lex.push(c.to_string());
-            head = cur + 1;
-        } else {
-            return Err("Unsupported token".to_owned());
+
+            let t = if c.is_ascii_digit() {
+                // 数値のパース
+                let mut tail = cur + 1;
+                while tail < input.len() && input.get(tail).unwrap().is_ascii_digit() {
+                    tail += 1;
+                }
+                let v = String::from_iter(&input[cur..tail]);
+                let v = match v.parse::<i32>() {
+                    Ok(num) => num,
+                    Err(e) => return Err(format!("Parse error. {} {:?}", v, e)),
+                };
+                cur = tail - 1;
+                Token::Number(v)
+            } else {
+                // 記号
+                match c {
+                    &'+' => Token::Reserved('+'),
+                    &'-' => Token::Reserved('-'),
+                    _ => return Err(format!("Unsupported token {}", c)),
+                }
+            };
+
+            tkn.push(t);
+            cur += 1;
         }
-        cur += 1;
+
+        tkn.push(Token::Eof);
+
+        return Ok(tkn)
     }
 
-    if head != cur {
-        lex.push(l[head..cur].to_string())
+    fn head(& self) -> &Token {
+        self.token.get(self.position).unwrap()
     }
 
-    return Ok(lex);
-
+    fn deque(&mut self) -> &Token {
+        self.position += 1;
+        self.token.get(self.position - 1).unwrap()
+    }
 }
 
 fn run_app() -> Result<(), String> {
@@ -36,45 +82,37 @@ fn run_app() -> Result<(), String> {
         return Err("Too few Argument.".to_owned());
     }
 
-    let lex = torknize(&args[1])?;
-
-    if lex.len() <= 0 {
-        return Err("Format Err".to_owned());
-    }
+    let mut token = Lexer::new(&args[1].chars().collect())?;
 
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    let v: i32 = match lex[0].parse() {
-        Ok(num) => num,
-        Err(_) => return Err(format!("Parse Error {}", lex[0]).to_owned()),
-    };
-    println!("    mov rax, {}", v);
-    let mut i: usize = 1;
-    loop {
-        if lex.len() <= i {
-            break;
-        }
-        let ope = match lex[i].as_str() {
-            "+" => "add",
-            "-" => "sub",
-            _ => return Err(format!("Unexpected char {}", lex[i])),
-        };
-        i += 1;
+    println!("    mov rax, {}", match token.deque() {
+        Token::Number(v) => v,
+        t => return Err(format!("Unexpected Token {:?}", t)),
+    });
 
-        if lex.len() <= i {
-            return Err("Format Err".to_owned());
-        }
-
-        let v: i32 = match lex[i].parse() {
-            Ok(num) => num,
-            Err(_) => return Err(format!("Parse Error {}", lex[i]).to_owned()),
+    while *token.head() != Token::Eof {
+        let r = match token.deque() {
+            Token::Reserved(r) => r,
+            t => return Err(format!("Unexpected Token {:?}", t)),
         };
-        i += 1;
+
+        let ope = match r {
+            '+' => "add",
+            '-' => "sub",
+            _ => return Err(format!("Unexpected Reserved {}", r)),
+        };
+
+        let v = match token.deque() {
+            Token::Number(v) => v,
+            t => return Err(format!("Unexpected Token {:?}", t)),
+        };
 
         println!("    {} rax, {}", ope, v);
     }
+
     println!("    ret");
     Ok(())
 }
