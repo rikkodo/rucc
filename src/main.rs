@@ -1,10 +1,72 @@
 use std::iter::FromIterator;
 
-#[derive(Debug, PartialEq, Clone)]
-enum Token {
-    Reserved(char),  // 記号
-    Number(i32),  // 数値 i32としておく
+#[derive(Debug, Copy, Clone)]
+struct Point {
+    line: usize,
+    pos: usize,
+}
+
+impl std::fmt::Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "line: {} pos: {}", self.line, self.pos)
+    }
+}
+
+#[derive(Debug)]
+enum RuccErr {
+    ParseErr(String, Point),
+    TokenErr(String, Token),
+    InsideErr(String),
+}
+
+impl std::error::Error for RuccErr {}
+impl std::fmt::Display for RuccErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            RuccErr::ParseErr(s, p) => write!(f, "Parse {} at {}", s, p),
+            RuccErr::TokenErr(s, t) => write!(f, "Token {} {} at {}", s, t.get_kind(), t.get_point()),
+            RuccErr::InsideErr(s) => write!(f, "Inside {}", s),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum TokenKind {
+    Plus,  // + 記号
+    Minus,  // - 記号
+    Int(i32),  // 数値 i32としておく
     Eof, // 入力の終わりを表す
+}
+
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            TokenKind::Plus => write!(f, "Symbole +"),
+            TokenKind::Minus => write!(f, "Symbole -"),
+            TokenKind::Int(v) => write!(f, "Int {}", v),
+            TokenKind::Eof => write!(f, "End of File"),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct Token {
+    kind: TokenKind,
+    point : Point,
+}
+
+impl Token {
+    fn new(kind: TokenKind, line: usize, pos: usize) -> Token {
+        Token {kind, point: Point{line, pos}}
+    }
+
+    fn get_kind(&self) -> &TokenKind {
+        &self.kind
+    }
+
+    fn get_point(&self) -> &Point {
+        &self.point
+    }
 }
 
 // ref :  https://qiita.com/nirasan/items/f7a232af3372ea370f4b
@@ -16,14 +78,15 @@ struct Lexer {
 }
 
 impl Lexer {
-    fn new(input: &Vec<char>) -> Result<Lexer, String> {
+    fn new(input: &Vec<char>) -> Result<Lexer, Box<dyn std::error::Error>> {
         let tkn = Lexer::tokenize(input)?;
         Ok(Lexer {token: tkn, position: 0})
     }
 
-    fn tokenize(input: &Vec<char>) -> Result<Vec<Token>, String> {
+    fn tokenize(input: &Vec<char>) -> Result<Vec<Token>, Box<dyn std::error::Error>> {
         let mut tkn: Vec<Token> = Vec::new();
         let mut cur: usize = 0;
+        let line: usize = 1;
 
         while cur < input.len() {
             let c = input.get(cur).unwrap();
@@ -43,16 +106,23 @@ impl Lexer {
                 let v = String::from_iter(&input[cur..tail]);
                 let v = match v.parse::<i32>() {
                     Ok(num) => num,
-                    Err(e) => return Err(format!("Parse error. {} {:?}", v, e)),
+                    Err(e) => {
+                        let e = RuccErr::ParseErr(format!("Can't Pares {} {}", v, e), Point {line, pos: cur});
+                        return Err(Box::new(e))
+                    },
                 };
+                let t = Token::new(TokenKind::Int(v), line, cur);
                 cur = tail - 1;
-                Token::Number(v)
+                t
             } else {
                 // 記号
-                match c {
-                    &'+' => Token::Reserved('+'),
-                    &'-' => Token::Reserved('-'),
-                    _ => return Err(format!("Unsupported token {}", c)),
+                match *c {
+                    '+' => Token::new(TokenKind::Plus, line, cur),
+                    '-' => Token::new(TokenKind::Minus, line, cur),
+                    _ => {
+                        let e = RuccErr::ParseErr(format!("Unexpected {}", c), Point {line, pos: cur});
+                        return Err(Box::new(e))
+                    },
                 }
             };
 
@@ -60,54 +130,64 @@ impl Lexer {
             cur += 1;
         }
 
-        tkn.push(Token::Eof);
+        tkn.push(Token::new(TokenKind::Eof, line, cur));
 
         return Ok(tkn)
     }
 
-    fn head(& self) -> &Token {
-        self.token.get(self.position).unwrap()
+    fn is_eof(&self) -> bool {
+        *self.token.get(self.position).unwrap().get_kind() == TokenKind::Eof
     }
 
-    fn deque(&mut self) -> &Token {
-        self.position += 1;
-        self.token.get(self.position - 1).unwrap()
+    fn deque(&mut self) -> Result<&Token, Box<dyn std::error::Error>> {
+        if self.position < self.token.len() {
+            self.position += 1;
+            Ok(self.token.get(self.position - 1).unwrap())
+        } else {
+            let e = RuccErr::InsideErr(
+                format!("DequeueErr {} {}", file!(), line!())
+            );
+            Err(Box::new(e))
+        }
     }
 }
 
-fn run_app() -> Result<(), String> {
-    let args: Vec<String> = std::env::args().collect();
+fn run_app(input: &Vec<char>) -> Result<(), Box<dyn std::error::Error>> {
 
-    if args.len() < 2 {
-        return Err("Too few Argument.".to_owned());
-    }
-
-    let mut token = Lexer::new(&args[1].chars().collect())?;
+    let mut token = Lexer::new(input)?;
 
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    println!("    mov rax, {}", match token.deque() {
-        Token::Number(v) => v,
-        t => return Err(format!("Unexpected Token {:?}", t)),
-    });
+    let t = token.deque()?;
+    let v = match t.get_kind() {
+        TokenKind::Int(v) => v,
+        _ => {
+            let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+            return Err(Box::new(e))
+        },
+    };
+    println!("    mov rax, {}", v);
 
-    while *token.head() != Token::Eof {
-        let r = match token.deque() {
-            Token::Reserved(r) => r,
-            t => return Err(format!("Unexpected Token {:?}", t)),
+    while !token.is_eof() {
+        let t = token.deque()?;
+        let ope = match t.get_kind() {
+            TokenKind::Plus => "add",
+            TokenKind::Minus=> "sub",
+            _ => {
+                let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+                return Err(Box::new(e))
+            },
         };
 
-        let ope = match r {
-            '+' => "add",
-            '-' => "sub",
-            _ => return Err(format!("Unexpected Reserved {}", r)),
-        };
-
-        let v = match token.deque() {
-            Token::Number(v) => v,
-            t => return Err(format!("Unexpected Token {:?}", t)),
+        let t = token.deque()?;
+        let v = match t.get_kind() {
+            TokenKind::Int(v) => v,
+            _ => {
+                let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+                return Err(Box::new(e))
+            },
         };
 
         println!("    {} rax, {}", ope, v);
@@ -118,11 +198,21 @@ fn run_app() -> Result<(), String> {
 }
 
 fn main() {
-    std::process::exit(match run_app() {
+
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() < 2 {
+        eprintln!("Too few Argument.");
+        std::process::exit(1)
+    }
+
+    let input = &args[1].chars().collect();
+
+    std::process::exit(match run_app(input) {
         Ok(_) => 0,
         Err(err) => {
-            eprintln!("error: {:?}", err);
+            eprintln!("error: {}", err);
             1
-        }
+        },
     });
 }
