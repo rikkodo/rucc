@@ -3,16 +3,12 @@ try () {
     expected="$1"
     input="$2"
 
-    cargo run -- "$input" > tmp.s
-    gcc -o tmp tmp.s
-    ./tmp
-    actual="$?"
+    actual=$(sh ./run.sh "$2")
     if [ "$actual" = "$expected" ] ; then
-        echo "$input => $actual"
+        echo  "\e[32m$input => $actual\e[0m"
     else
-        echo "$input => $expected expected, but got $actual"
+        echo "\e[31m$input => $expected expected, but got $actual\e[0m"
     fi
-    rm ./tmp.s ./tmp
 }
 
 try 0 0
