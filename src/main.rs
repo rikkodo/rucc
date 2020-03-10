@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct Point {
     line: usize,
     pos: usize,
@@ -30,11 +30,11 @@ impl std::fmt::Display for RuccErr {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum TokenKind {
     Plus,  // + 記号
     Minus,  // - 記号
-    Int(i32),  // 数値 i32としておく
+    Integer(i32),  // 数値 i32としておく
     Eof, // 入力の終わりを表す
 }
 
@@ -43,16 +43,16 @@ impl std::fmt::Display for TokenKind {
         match *self {
             TokenKind::Plus => write!(f, "Symbole +"),
             TokenKind::Minus => write!(f, "Symbole -"),
-            TokenKind::Int(v) => write!(f, "Int {}", v),
+            TokenKind::Integer(v) => write!(f, "Integer {}", v),
             TokenKind::Eof => write!(f, "End of File"),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct Token {
     kind: TokenKind,
-    point : Point,
+    point: Point,
 }
 
 impl Token {
@@ -111,7 +111,7 @@ impl Lexer {
                         return Err(Box::new(e))
                     },
                 };
-                let t = Token::new(TokenKind::Int(v), line, cur);
+                let t = Token::new(TokenKind::Integer(v), line, cur);
                 cur = tail - 1;
                 t
             } else {
@@ -162,9 +162,9 @@ fn run_app(input: &Vec<char>) -> Result<(), Box<dyn std::error::Error>> {
 
     let t = token.deque()?;
     let v = match t.get_kind() {
-        TokenKind::Int(v) => v,
+        TokenKind::Integer(v) => v,
         _ => {
-            let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+            let e = RuccErr::TokenErr("Unexpected".to_owned(), t.clone());
             return Err(Box::new(e))
         },
     };
@@ -176,16 +176,16 @@ fn run_app(input: &Vec<char>) -> Result<(), Box<dyn std::error::Error>> {
             TokenKind::Plus => "add",
             TokenKind::Minus=> "sub",
             _ => {
-                let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+                let e = RuccErr::TokenErr("Unexpected".to_owned(), t.clone());
                 return Err(Box::new(e))
             },
         };
 
         let t = token.deque()?;
         let v = match t.get_kind() {
-            TokenKind::Int(v) => v,
+            TokenKind::Integer(v) => v,
             _ => {
-                let e = RuccErr::TokenErr("Unexpected".to_owned(), *t);
+                let e = RuccErr::TokenErr("Unexpected".to_owned(), t.clone());
                 return Err(Box::new(e))
             },
         };
