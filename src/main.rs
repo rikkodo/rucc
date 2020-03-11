@@ -1,5 +1,3 @@
-use std::iter::FromIterator;
-
 #[derive(Debug, Clone)]
 struct Point {
     line: usize,
@@ -103,7 +101,7 @@ impl Lexer {
                 while tail < input.len() && input.get(tail).unwrap().is_ascii_digit() {
                     tail += 1;
                 }
-                let v = String::from_iter(&input[cur..tail]);
+                let v = &input[cur..tail].into_iter().collect::<String>();
                 let v = match v.parse::<i32>() {
                     Ok(num) => num,
                     Err(e) => {
