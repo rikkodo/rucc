@@ -30,8 +30,7 @@ impl std::fmt::Display for RuccErr {
 
 #[derive(Debug, PartialEq, Clone)]
 enum TokenKind {
-    Plus,  // + 記号
-    Minus,  // - 記号
+    Reserved(&'static str),  // 予約語
     Integer(i32),  // 数値 i32としておく
     Eof, // 入力の終わりを表す
 }
@@ -39,8 +38,7 @@ enum TokenKind {
 impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
-            TokenKind::Plus => write!(f, "symbole +"),
-            TokenKind::Minus => write!(f, "symbole -"),
+            TokenKind::Reserved(s) => write!(f, "symbole {}", s),
             TokenKind::Integer(v) => write!(f, "integer {}", v),
             TokenKind::Eof => write!(f, "end of file"),
         }
@@ -116,8 +114,10 @@ impl Lexer {
             } else {
                 // 記号
                 match *c {
-                    '+' => Token::new(TokenKind::Plus, line, cur),
-                    '-' => Token::new(TokenKind::Minus, line, cur),
+                    '+' => Token::new(TokenKind::Reserved("+"), line, cur),
+                    '-' => Token::new(TokenKind::Reserved("-"), line, cur),
+                    '*' => Token::new(TokenKind::Reserved("*"), line, cur),
+                    '/' => Token::new(TokenKind::Reserved("/"), line, cur),
                     _ => {
                         return Err(RuccErr::ParseErr(
                             format!("unexpected {}", c), Point {line, pos: cur})
@@ -139,23 +139,23 @@ impl Lexer {
         *self.token.get(self.position).unwrap().get_kind() == TokenKind::Eof
     }
 
-    fn consume(&mut self, t: TokenKind) -> Result<bool, RuccErr> {
+    fn consume(&mut self, t: &str) -> Result<bool, RuccErr> {
         let h = self.head()?;
-        let r = h.kind == t;
-        if r {
-            self.position += 1;
+        if let TokenKind::Reserved(v) = h.kind {
+            if v == t {
+                self.position += 1;
+                return Ok(true)
+            }
         }
-        Ok(r)
+
+        Ok(false)
     }
 
-    fn expect(&mut self, t: TokenKind) -> Result<(), RuccErr> {
-        let h = self.head()?;
-        if h.kind == t {
-            self.position += 1;
-            Ok(())
-        } else {
-            Err(RuccErr::TokenErr("unexpected".to_owned(), h.clone()))
+    fn expect(&mut self, t: &str) -> Result<(), RuccErr> {
+        if self.consume(t)? {
+            return Ok(())
         }
+        Err(RuccErr::TokenErr("unexpected".to_owned(), self.head()?.clone()))
     }
 
     fn expect_number(&mut self) -> Result<i32, RuccErr> {
@@ -171,7 +171,7 @@ impl Lexer {
         }
     }
 
-    fn head(&mut self) -> Result<&Token, RuccErr> {
+    fn head(&self) -> Result<&Token, RuccErr> {
         if self.position < self.token.len() {
             Ok(self.token.get(self.position).unwrap())
         } else {
@@ -192,10 +192,10 @@ fn run_app(input: &Vec<char>) -> Result<(), RuccErr> {
     println!("    mov rax, {}", v);
 
     while !token.is_eof() {
-        let ope = if token.consume(TokenKind::Plus)? {
+        let ope = if token.consume("+")? {
             "add"
         } else {
-            token.expect(TokenKind::Minus)?;
+            token.expect("-")?;
             "sub"
         };
 
