@@ -66,6 +66,7 @@ impl Token {
 }
 
 // ref :  https://qiita.com/nirasan/items/f7a232af3372ea370f4b
+#[derive(Debug)]
 struct Lexer {
     // トークン列
     token: Vec<Token>,
@@ -118,6 +119,8 @@ impl Lexer {
                     '-' => Token::new(TokenKind::Reserved("-"), line, cur),
                     '*' => Token::new(TokenKind::Reserved("*"), line, cur),
                     '/' => Token::new(TokenKind::Reserved("/"), line, cur),
+                    '(' => Token::new(TokenKind::Reserved("("), line, cur),
+                    ')' => Token::new(TokenKind::Reserved(")"), line, cur),
                     _ => {
                         return Err(RuccErr::ParseErr(
                             format!("unexpected {}", c), Point {line, pos: cur})
@@ -135,9 +138,11 @@ impl Lexer {
         return Ok(tkn)
     }
 
+    /*
     fn is_eof(&self) -> bool {
         *self.token.get(self.position).unwrap().get_kind() == TokenKind::Eof
     }
+    */
 
     fn consume(&mut self, t: &str) -> Result<bool, RuccErr> {
         let h = self.head()?;
@@ -180,29 +185,164 @@ impl Lexer {
     }
 }
 
+/* 二分木 */
+#[derive(Debug)]
+enum BinTree<T> {
+    Nil,
+    Node{
+        val: T,
+        left: Box<BinTree<T>>,
+        right: Box<BinTree<T>>,
+    },
+}
+impl<T> BinTree<T> {
+    fn postorder(&self, act: &dyn Fn(&T))  {
+        BinTree::<T>::postorder_in(self, act)
+    }
+
+    fn postorder_in(t: &BinTree<T>, act: &dyn Fn(&T)){
+        match t {
+            BinTree::<T>::Nil => (),
+            BinTree::<T>::Node{val, left, right} => {
+                BinTree::<T>::postorder_in(&*left, act);
+                BinTree::<T>::postorder_in(&*right, act);
+                act(val)
+            }
+        }
+    }
+}
+
+
+// 抽象構文木
+#[derive(Debug)]
+enum NodeKind {
+    Plus,  // + 記号
+    Minus,  // - 記号
+    Mul,  // * 記号
+    Div,  // / 記号
+    Integer(i32),  // 数値 i32としておく
+}
+
+#[derive(Debug)]
+struct NodeTree {
+}
+
+impl NodeTree {
+    fn parse(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        NodeTree::expr(lex)
+    }
+
+    fn expr(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        let mut l = NodeTree::mul(lex)?;
+        loop {
+            if lex.consume("+")? {
+                l = NodeTree::new_node(NodeKind::Plus, l, NodeTree::mul(lex)?)
+            }
+            else if lex.consume("-")? {
+                l = NodeTree::new_node(NodeKind::Minus, l, NodeTree::mul(lex)?)
+            }
+            else
+            {
+                return Ok(l);
+            }
+        }
+    }
+
+    fn mul(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        let mut l = NodeTree::primary(lex)?;
+        loop {
+            if lex.consume("*")? {
+                l = NodeTree::new_node(NodeKind::Mul, l, NodeTree::primary(lex)?)
+            }
+            else if lex.consume("/")? {
+                l = NodeTree::new_node(NodeKind::Div, l, NodeTree::primary(lex)?)
+            }
+            else
+            {
+                return Ok(l);
+            }
+        }
+    }
+
+    fn primary(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        if lex.consume("(")? {
+            let l = NodeTree::expr(lex)?;
+            lex.expect(")")?;
+            Ok(l)
+        } else {
+            Ok(NodeTree::new_node_num(lex.expect_number()?))
+        }
+    }
+
+    fn new_node_num(val: i32) -> BinTree::<NodeKind> {
+        BinTree::<NodeKind>::Node {
+            val: NodeKind::Integer(val),
+            left: Box::new(BinTree::<NodeKind>::Nil),
+            right: Box::new(BinTree::<NodeKind>::Nil),
+        }
+    }
+
+    fn new_node(k: NodeKind, l: BinTree::<NodeKind>, r: BinTree::<NodeKind>) -> BinTree::<NodeKind> {
+        BinTree::<NodeKind>::Node {
+            val: k,
+            left: Box::new(l),
+            right: Box::new(r),
+        }
+    }
+
+    fn gencode(t: &BinTree::<NodeKind>) {
+        let f = |n: &NodeKind| {
+            match n {
+                NodeKind::Integer(v) => {
+                    println!("    push {}", v);
+                }
+                NodeKind::Plus => {
+                    println!("    pop rdi");
+                    println!("    pop rax");
+                    println!("    add rax, rdi");
+                    println!("    push rax")
+                },
+                NodeKind::Minus => {
+                    println!("    pop rdi");
+                    println!("    pop rax");
+                    println!("    sub rax, rdi");
+                    println!("    push rax")
+                },
+                NodeKind::Mul => {
+                    println!("    pop rdi");
+                    println!("    pop rax");
+                    println!("    imul rax, rdi");
+                    println!("    push rax")
+                },
+                NodeKind::Div => {
+                    println!("    pop rdi");
+                    println!("    pop rax");
+                    println!("    cqo");
+                    println!("    idiv rdi");
+                    println!("    push rax")
+                },
+            }
+        };
+        t.postorder(&f)
+    }
+}
+
+
 fn run_app(input: &Vec<char>) -> Result<(), RuccErr> {
 
     let mut token = Lexer::new(input)?;
 
+    let tree = NodeTree::parse(&mut token)?;
+
+    /* 定型文 */
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    let v = token.expect_number()?;
-    println!("    mov rax, {}", v);
+    NodeTree::gencode(&tree);
 
-    while !token.is_eof() {
-        let ope = if token.consume("+")? {
-            "add"
-        } else {
-            token.expect("-")?;
-            "sub"
-        };
-
-        let v = token.expect_number()?;
-        println!("    {} rax, {}", ope, v);
-    }
-
+    /* 終わり */
+    println!("    pop rax");
     println!("    ret");
     Ok(())
 }
