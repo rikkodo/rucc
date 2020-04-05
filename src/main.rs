@@ -138,42 +138,29 @@ impl Lexer {
         return Ok(tkn)
     }
 
-    /*
-    fn is_eof(&self) -> bool {
-        *self.token.get(self.position).unwrap().get_kind() == TokenKind::Eof
-    }
-    */
-
-    fn consume(&mut self, t: &str) -> Result<bool, RuccErr> {
-        let h = self.head()?;
-        if let TokenKind::Reserved(v) = h.kind {
+    fn consume_reserved(&mut self, t: &str) -> Result<bool, RuccErr> {
+        if let TokenKind::Reserved(v) = self.head()?.kind {
             if v == t {
                 self.position += 1;
                 return Ok(true)
             }
         }
-
         Ok(false)
     }
 
-    fn expect(&mut self, t: &str) -> Result<(), RuccErr> {
-        if self.consume(t)? {
+    fn expect_reserved(&mut self, t: &str) -> Result<(), RuccErr> {
+        if self.consume_reserved(t)? {
             return Ok(())
         }
         Err(RuccErr::TokenErr("unexpected".to_owned(), self.head()?.clone()))
     }
 
     fn expect_number(&mut self) -> Result<i32, RuccErr> {
-        let h = self.head()?;
-        match h.kind {
-            TokenKind::Integer(v) => {
-                self.position += 1;
-                Ok(v)
-            },
-            _ => {
-                Err(RuccErr::TokenErr("unexpected".to_owned(), h.clone()))
-            },
+        if let TokenKind::Integer(v) = self.head()?.kind {
+            self.position += 1;
+            return Ok(v)
         }
+        Err(RuccErr::TokenErr("unexpected".to_owned(), self.head()?.clone()))
     }
 
     fn head(&self) -> Result<&Token, RuccErr> {
@@ -247,10 +234,10 @@ impl NodeTree {
     fn expr(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
         let mut l = NodeTree::mul(lex)?;
         loop {
-            if lex.consume("+")? {
+            if lex.consume_reserved("+")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Plus), l, NodeTree::mul(lex)?)
             }
-            else if lex.consume("-")? {
+            else if lex.consume_reserved("-")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), l, NodeTree::mul(lex)?)
             }
             else
@@ -263,10 +250,10 @@ impl NodeTree {
     fn mul(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
         let mut l = NodeTree::primary(lex)?;
         loop {
-            if lex.consume("*")? {
+            if lex.consume_reserved("*")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Mul), l, NodeTree::primary(lex)?)
             }
-            else if lex.consume("/")? {
+            else if lex.consume_reserved("/")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Div), l, NodeTree::primary(lex)?)
             }
             else
@@ -277,9 +264,9 @@ impl NodeTree {
     }
 
     fn primary(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
-        if lex.consume("(")? {
+        if lex.consume_reserved("(")? {
             let l = NodeTree::expr(lex)?;
-            lex.expect(")")?;
+            lex.expect_reserved(")")?;
             Ok(l)
         } else {
             Ok(NodeTree::new_node_num(lex.expect_number()?))
