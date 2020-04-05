@@ -1,6 +1,6 @@
 #!/bin/bash
-
-DIR=$(dirname $0 [-p: print])
+# Usage $0 [-p Print Asm]
+DIR=$(dirname $0)
 DEBUGPATH="${DIR}/../target/debug/"
 MODULE="rucc"
 PRINT=""
