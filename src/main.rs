@@ -28,6 +28,7 @@ impl std::fmt::Display for RuccErr {
     }
 }
 
+
 #[derive(Debug, PartialEq, Clone)]
 enum TokenKind {
     Reserved(&'static str),  // 予約語
@@ -248,18 +249,31 @@ impl NodeTree {
     }
 
     fn mul(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
-        let mut l = NodeTree::primary(lex)?;
+        let mut l = NodeTree::unary(lex)?;
         loop {
             if lex.consume_reserved("*")? {
-                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Mul), l, NodeTree::primary(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Mul), l, NodeTree::unary(lex)?)
             }
             else if lex.consume_reserved("/")? {
-                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Div), l, NodeTree::primary(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Div), l, NodeTree::unary(lex)?)
             }
             else
             {
                 return Ok(l);
             }
+        }
+    }
+
+    fn unary(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        if lex.consume_reserved("+")? {
+            return Ok(NodeTree::unary(lex)?)
+        }
+        else if lex.consume_reserved("-")? {
+            return Ok(NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), NodeTree::new_node_num(0), NodeTree::unary(lex)?))
+        }
+        else
+        {
+            return Ok(NodeTree::primary(lex)?);
         }
     }
 
