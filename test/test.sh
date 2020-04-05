@@ -1,9 +1,12 @@
 #!/bin/bash
-assert () {
-    expected="$1"
-    input="$2"
 
-    actual=$(sh ./run.sh "$2")
+DIR=$(dirname $0)
+
+assert () {
+    local expected="$1"
+    local input="$2"
+
+    local actual=$(sh ${DIR}/run.sh "$2")
     if [ "$actual" = "$expected" ] ; then
         echo  "\e[32m$input => $actual\e[0m"
     else
