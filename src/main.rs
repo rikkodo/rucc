@@ -214,13 +214,25 @@ impl<T> BinTree<T> {
 
 
 // 抽象構文木
+// オペレータ
 #[derive(Debug)]
-enum NodeKind {
+enum NodeOperand {
+    Integer(i32),  // 数値 i32としておく
+}
+
+// 二項オペランド
+#[derive(Debug)]
+enum NodeBinOperator {
     Plus,  // + 記号
     Minus,  // - 記号
     Mul,  // * 記号
     Div,  // / 記号
-    Integer(i32),  // 数値 i32としておく
+}
+
+#[derive(Debug)]
+enum NodeKind {
+    Operand(NodeOperand),
+    BinOperator(NodeBinOperator),
 }
 
 #[derive(Debug)]
@@ -236,10 +248,10 @@ impl NodeTree {
         let mut l = NodeTree::mul(lex)?;
         loop {
             if lex.consume("+")? {
-                l = NodeTree::new_node(NodeKind::Plus, l, NodeTree::mul(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Plus), l, NodeTree::mul(lex)?)
             }
             else if lex.consume("-")? {
-                l = NodeTree::new_node(NodeKind::Minus, l, NodeTree::mul(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), l, NodeTree::mul(lex)?)
             }
             else
             {
@@ -252,10 +264,10 @@ impl NodeTree {
         let mut l = NodeTree::primary(lex)?;
         loop {
             if lex.consume("*")? {
-                l = NodeTree::new_node(NodeKind::Mul, l, NodeTree::primary(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Mul), l, NodeTree::primary(lex)?)
             }
             else if lex.consume("/")? {
-                l = NodeTree::new_node(NodeKind::Div, l, NodeTree::primary(lex)?)
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Div), l, NodeTree::primary(lex)?)
             }
             else
             {
@@ -276,7 +288,7 @@ impl NodeTree {
 
     fn new_node_num(val: i32) -> BinTree::<NodeKind> {
         BinTree::<NodeKind>::Node {
-            val: NodeKind::Integer(val),
+            val: NodeKind::Operand(NodeOperand::Integer(val)),
             left: Box::new(BinTree::<NodeKind>::Nil),
             right: Box::new(BinTree::<NodeKind>::Nil),
         }
@@ -293,32 +305,31 @@ impl NodeTree {
     fn gencode(t: &BinTree::<NodeKind>) {
         let f = |n: &NodeKind| {
             match n {
-                NodeKind::Integer(v) => {
-                    println!("    push {}", v);
-                }
-                NodeKind::Plus => {
-                    println!("    pop rdi");
-                    println!("    pop rax");
-                    println!("    add rax, rdi");
-                    println!("    push rax")
+                NodeKind::Operand(n) => {
+                    match n {
+                        NodeOperand::Integer(v) => {
+                            println!("    push {}", v);
+                        }
+                    }
                 },
-                NodeKind::Minus => {
+                NodeKind::BinOperator(n) => {
                     println!("    pop rdi");
                     println!("    pop rax");
-                    println!("    sub rax, rdi");
-                    println!("    push rax")
-                },
-                NodeKind::Mul => {
-                    println!("    pop rdi");
-                    println!("    pop rax");
-                    println!("    imul rax, rdi");
-                    println!("    push rax")
-                },
-                NodeKind::Div => {
-                    println!("    pop rdi");
-                    println!("    pop rax");
-                    println!("    cqo");
-                    println!("    idiv rdi");
+                    match n  {
+                        NodeBinOperator::Plus => {
+                            println!("    add rax, rdi");
+                        },
+                        NodeBinOperator::Minus => {
+                            println!("    sub rax, rdi");
+                        },
+                        NodeBinOperator::Mul => {
+                            println!("    imul rax, rdi");
+                        },
+                        NodeBinOperator::Div => {
+                            println!("    cqo");
+                            println!("    idiv rdi");
+                        },
+                    }
                     println!("    push rax")
                 },
             }
