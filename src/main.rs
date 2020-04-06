@@ -116,7 +116,7 @@ impl Lexer {
                 t
             } else {
                 // 記号
-                Lexer::parse_reserved(&input[cur..].into_iter().collect(), line, &mut cur)?
+                Lexer::parse_reserved(&input[cur..], line, &mut cur)?
             };
 
             tkn.push(t);
@@ -127,16 +127,17 @@ impl Lexer {
         return Ok(tkn)
     }
 
-    fn parse_reserved(input: &String, line: usize, cur: &mut usize) -> Result<Token, RuccErr> {
+    fn parse_reserved(input: &[char], line: usize, cur: &mut usize) -> Result<Token, RuccErr> {
+        let is: String = input.into_iter().collect();
         for ts in ["==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">"].iter() {
-            if input.starts_with(ts){
+            if is.starts_with(ts) {
                 let ret = Token::new(TokenKind::Reserved(ts), line, *cur);
                 *cur += ts.len();
                 return Ok(ret)
             }
         }
         return Err(RuccErr::ParseErr(
-            format!("unexpected {}", input.chars().next().unwrap()), Point {line, pos: *cur})
+            format!("unexpected {}", input.get(0).unwrap()), Point {line, pos: *cur})
         );
     }
 
