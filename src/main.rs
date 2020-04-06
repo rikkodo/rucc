@@ -76,14 +76,15 @@ struct Lexer {
 }
 
 impl Lexer {
-    fn new(input: &Vec<char>) -> Result<Lexer,RuccErr> {
+    fn new(input: &String) -> Result<Lexer,RuccErr> {
         let tkn = Lexer::tokenize(input)?;
         Ok(Lexer {token: tkn, position: 0})
     }
 
-    fn tokenize(input: &Vec<char>) -> Result<Vec<Token>, RuccErr> {
+    fn tokenize(input: &String) -> Result<Vec<Token>, RuccErr> {
         let mut tkn: Vec<Token> = Vec::new();
         let mut cur: usize = 0;
+        let input: Vec<char> = input.chars().collect();
         let line: usize = 1;
 
         while cur < input.len() {
@@ -111,32 +112,32 @@ impl Lexer {
                     },
                 };
                 let t = Token::new(TokenKind::Integer(v), line, cur);
-                cur = tail - 1;
+                cur = tail;
                 t
             } else {
                 // 記号
-                match *c {
-                    '+' => Token::new(TokenKind::Reserved("+"), line, cur),
-                    '-' => Token::new(TokenKind::Reserved("-"), line, cur),
-                    '*' => Token::new(TokenKind::Reserved("*"), line, cur),
-                    '/' => Token::new(TokenKind::Reserved("/"), line, cur),
-                    '(' => Token::new(TokenKind::Reserved("("), line, cur),
-                    ')' => Token::new(TokenKind::Reserved(")"), line, cur),
-                    _ => {
-                        return Err(RuccErr::ParseErr(
-                            format!("unexpected {}", c), Point {line, pos: cur})
-                        );
-                    },
-                }
+                Lexer::parse_reserved(&input[cur..].into_iter().collect(), line, &mut cur)?
             };
 
             tkn.push(t);
-            cur += 1;
         }
 
         tkn.push(Token::new(TokenKind::Eof, line, cur));
 
         return Ok(tkn)
+    }
+
+    fn parse_reserved(input: &String, line: usize, cur: &mut usize) -> Result<Token, RuccErr> {
+        for ts in ["==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">"].iter() {
+            if input.starts_with(ts){
+                let ret = Token::new(TokenKind::Reserved(ts), line, *cur);
+                *cur += ts.len();
+                return Ok(ret)
+            }
+        }
+        return Err(RuccErr::ParseErr(
+            format!("unexpected {}", input.chars().next().unwrap()), Point {line, pos: *cur})
+        );
     }
 
     fn consume_reserved(&mut self, t: &str) -> Result<bool, RuccErr> {
@@ -215,6 +216,10 @@ enum NodeBinOperator {
     Minus,  // - 記号
     Mul,  // * 記号
     Div,  // / 記号
+    Eq, // ==
+    Neq, // !=
+    LessThan, // <
+    LessEq, // <=
 }
 
 #[derive(Debug)]
@@ -233,17 +238,48 @@ impl NodeTree {
     }
 
     fn expr(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        NodeTree::equality(lex)
+    }
+
+    fn equality(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        let mut l = NodeTree::relational(lex)?;
+        loop {
+            if lex.consume_reserved("==")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Eq), l, NodeTree::relational(lex)?)
+            } else if lex.consume_reserved("!=")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Neq), l, NodeTree::relational(lex)?)
+            } else {
+                return Ok(l)
+            }
+        }
+    }
+
+    fn relational(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
+        let mut l = NodeTree::add(lex)?;
+        loop {
+            if lex.consume_reserved("<")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::LessThan), l, NodeTree::add(lex)?)
+            } else if lex.consume_reserved("<=")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::LessEq), l, NodeTree::add(lex)?)
+            } else if lex.consume_reserved(">")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::LessThan), NodeTree::add(lex)?, l)
+            } else if lex.consume_reserved(">=")? {
+                l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::LessEq), NodeTree::add(lex)?, l)
+            } else {
+                return Ok(l)
+            }
+        }
+    }
+
+    fn add(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
         let mut l = NodeTree::mul(lex)?;
         loop {
             if lex.consume_reserved("+")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Plus), l, NodeTree::mul(lex)?)
-            }
-            else if lex.consume_reserved("-")? {
+            } else if lex.consume_reserved("-")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), l, NodeTree::mul(lex)?)
-            }
-            else
-            {
-                return Ok(l);
+            } else {
+                return Ok(l)
             }
         }
     }
@@ -253,27 +289,21 @@ impl NodeTree {
         loop {
             if lex.consume_reserved("*")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Mul), l, NodeTree::unary(lex)?)
-            }
-            else if lex.consume_reserved("/")? {
+            } else if lex.consume_reserved("/")? {
                 l = NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Div), l, NodeTree::unary(lex)?)
-            }
-            else
-            {
-                return Ok(l);
+            } else {
+                return Ok(l)
             }
         }
     }
 
     fn unary(lex: &mut Lexer) -> Result<BinTree::<NodeKind>, RuccErr> {
         if lex.consume_reserved("+")? {
-            return Ok(NodeTree::unary(lex)?)
-        }
-        else if lex.consume_reserved("-")? {
-            return Ok(NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), NodeTree::new_node_num(0), NodeTree::unary(lex)?))
-        }
-        else
-        {
-            return Ok(NodeTree::primary(lex)?);
+            Ok(NodeTree::unary(lex)?)
+        } else if lex.consume_reserved("-")? {
+            Ok(NodeTree::new_node(NodeKind::BinOperator(NodeBinOperator::Minus), NodeTree::new_node_num(0), NodeTree::unary(lex)?))
+        } else {
+            Ok(NodeTree::primary(lex)?)
         }
     }
 
@@ -330,6 +360,26 @@ impl NodeTree {
                             println!("    cqo");
                             println!("    idiv rdi");
                         },
+                        NodeBinOperator::Eq => {
+                            println!("  cmp rax, rdi\n");
+                            println!("  sete al\n");
+                            println!("  movzb rax, al\n");
+                        },
+                        NodeBinOperator::Neq => {
+                            println!("  cmp rax, rdi\n");
+                            println!("  setne al\n");
+                            println!("  movzb rax, al\n");
+                        },
+                        NodeBinOperator::LessThan => {
+                            println!("  cmp rax, rdi\n");
+                            println!("  setl al\n");
+                            println!("  movzb rax, al\n");
+                        },
+                        NodeBinOperator::LessEq => {
+                            println!("  cmp rax, rdi\n");
+                            println!("  setle al\n");
+                            println!("  movzb rax, al\n");
+                        },
                     }
                     println!("    push rax")
                 },
@@ -340,7 +390,7 @@ impl NodeTree {
 }
 
 
-fn run_app(input: &Vec<char>) -> Result<(), RuccErr> {
+fn run_app(input: &String) -> Result<(), RuccErr> {
 
     let mut token = Lexer::new(input)?;
 
@@ -360,9 +410,9 @@ fn run_app(input: &Vec<char>) -> Result<(), RuccErr> {
 }
 
 
-fn errorat(input: &Vec<char>, p: &Point)
+fn errorat(input: &String, p: &Point)
 {
-    eprintln!("{}", input.into_iter().collect::<String>());
+    eprintln!("{}", input);
     let mut sp = String::new();
     for _ in 0..p.pos {
         sp = sp + " ";
@@ -380,7 +430,7 @@ fn main() {
         std::process::exit(1)
     }
 
-    let input = &args[1].chars().collect();
+    let input = &args[1];
 
     std::process::exit(match run_app(input) {
         Ok(_) => 0,
